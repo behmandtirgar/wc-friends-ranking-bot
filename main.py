@@ -240,7 +240,7 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
     text = f"⚽ {team1} - {team2}\n"
 
     if real_team1_goals != "" and real_team2_goals != "":
-        text += f"نتیجه واقعی: {team1} {real_team1_goals}-{real_team2_goals} {team2}\n"
+        text += f"نتیجه واقعی: {team1}: {real_team1_goals} | {team2}: {real_team2_goals}\n"
     else:
         text += "نتیجه واقعی: هنوز وارد نشده\n"
 
@@ -257,7 +257,7 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
             text += f"{player}: —\n"
             continue
 
-        line = f"{player}: {team1} {pred_team1}-{pred_team2} {team2}"
+        line = f"{player}: {team1}: {pred_team1} | {team2}: {pred_team2}"
         if points != "":
             line += f" | {points} امتیاز"
 

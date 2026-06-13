@@ -438,7 +438,16 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
 
     text += "\n\n😄 نکته: بات ترکیب فارسی و عدد را برعکس نشان می‌دهد؛ نتیجه را برای تیم‌ها برعکس بخوانید."
 
-    send_long_message(chat_id, text)
+    send_message(
+        chat_id,
+        text,
+        reply_markup={
+            "inline_keyboard": [
+                [{"text": "📅 برگشت به لیست بازی‌ها", "callback_data": "games"}],
+                [{"text": "🔙 برگشت به منو", "callback_data": "menu"}],
+            ]
+        },
+    )
 
 
 
@@ -722,6 +731,69 @@ def notify_results():
     }
 
 
+
+def display_live_team(name: str) -> str:
+    name = str(name).strip()
+    english = TEAM_ENGLISH.get(name, name)
+    flag = FLAGS.get(english, "⚽")
+    return f"{flag} {english}"
+
+
+def goal_team_name(name: str) -> str:
+    name = str(name).strip()
+    return TEAM_ENGLISH.get(name, name)
+
+
+def format_minute(value: Any) -> str:
+    minute = str(value or "").strip()
+
+    if not minute:
+        return "⏱ Live"
+
+    if minute.lower() == "live":
+        return "⏱ Live"
+
+    return f"⏱ {minute}'"
+    
+
+def get_exact_predictors_for_live_match(match_id: str, home_score: int, away_score: int) -> List[str]:
+    game_index = safe_int(match_id, 0)
+
+    if game_index <= 0:
+        return []
+
+    rows = get_sheet_rows(force_refresh=True)
+
+    if len(rows) < 2:
+        return []
+
+    row_number = FIRST_MATCH_ROW + game_index - 1
+
+    if row_number < 1 or row_number > len(rows):
+        return []
+
+    row = rows[row_number - 1]
+    header1 = rows[0]
+    header2 = rows[1]
+
+    winners = []
+
+    for index, points_col in enumerate(POINTS_COLS):
+        player = get_player_name(header1, header2, points_col, index)
+
+        pred_away = cell(row, points_col - 2)
+        pred_home = cell(row, points_col - 1)
+
+        if pred_home == "" or pred_away == "":
+            continue
+
+        if safe_int(pred_home, -99) == home_score and safe_int(pred_away, -99) == away_score:
+            winners.append(player)
+
+    return winners
+    
+
+
 @app.get(f"/check-live-goals/{WEBHOOK_SECRET}")
 def check_live_goals():
     subscribers = load_subscribers()
@@ -784,18 +856,28 @@ def check_live_goals():
 
         if home_score > old_home or away_score > old_away:
             scoring_team = home if home_score > old_home else away
+        
             minute = game.get("time_elapsed") or game.get("minute") or game.get("elapsed") or ""
         
-            if minute:
-                minute_line = f"⏱ {minute}'"
+            home_display = display_live_team(home)
+            away_display = display_live_team(away)
+            scoring_team_display = goal_team_name(scoring_team)
+            minute_line = format_minute(minute)
+        
+            exact_predictors = get_exact_predictors_for_live_match(match_id, home_score, away_score)
+        
+            if exact_predictors:
+                predictors_text = "\n".join([f"✅ {name}" for name in exact_predictors])
+                predictors_block = f"\n\n🎯 تا این لحظه درست گفتن:\n{predictors_text}"
             else:
-                minute_line = "⏱ Live"
+                predictors_block = "\n\n🎯 فعلاً هیچ‌کس این نتیجه رو دقیق نگفته."
         
             goal_messages.append(
                 f"⚽ GOOOOOAL!\n\n"
-                f"{home} {home_score}-{away_score} {away}\n\n"
+                f"{home_display} {home_score}-{away_score} {away_display}\n\n"
                 f"{minute_line}\n\n"
-                f"گل برای {scoring_team}"
+                f"گل برای {scoring_team_display}"
+                f"{predictors_block}"
             )
 
     save_json_file(LIVE_STATE_FILE, new_state)

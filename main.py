@@ -17,6 +17,10 @@ WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "wc-secret").strip()
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
+LIVE_API_URL = "https://worldcup26.ir/get/games"
+LIVE_STATE_FILE = "live_scores_state.json"
+
+
 FIRST_MATCH_ROW = 3
 
 TEAM1_NAME_COL = 2   # B
@@ -513,6 +517,87 @@ def notify_results():
         "messages_sent_per_user": len(messages),
         "new_results": len(new_results),
         "leader_changed": bool(old_top and new_top and old_top != new_top),
+    }
+
+
+@app.get(f"/check-live-goals/{WEBHOOK_SECRET}")
+def check_live_goals():
+    subscribers = load_subscribers()
+
+    if not subscribers:
+        return {"ok": False, "message": "No subscribers yet."}
+
+    try:
+        response = requests.get(LIVE_API_URL, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    if isinstance(data, dict):
+        games = data.get("games") or data.get("data") or data.get("matches") or []
+    elif isinstance(data, list):
+        games = data
+    else:
+        games = []
+    old_state = load_json_file(LIVE_STATE_FILE, default={})
+    new_state = {}
+    goal_messages = []
+
+    for game in games:
+        match_id = str(game.get("id") or game.get("_id") or game.get("match_id") or "")
+
+        if not match_id:
+            continue
+
+        home = (
+            game.get("home_team_name_fa")
+            or game.get("home_team_name_en")
+            or game.get("home_team")
+            or "Home"
+        )
+
+        away = (
+            game.get("away_team_name_fa")
+            or game.get("away_team_name_en")
+            or game.get("away_team")
+            or "Away"
+        )
+
+        home_score = safe_int(game.get("home_score"), 0)
+        away_score = safe_int(game.get("away_score"), 0)
+
+        new_state[match_id] = {
+            "home_score": home_score,
+            "away_score": away_score,
+        }
+
+        old = old_state.get(match_id)
+
+        if not old:
+            continue
+
+        old_home = safe_int(old.get("home_score"), 0)
+        old_away = safe_int(old.get("away_score"), 0)
+
+        if home_score > old_home or away_score > old_away:
+            goal_messages.append(
+                f"⚽ گللللل!\n\n{home} {home_score}-{away_score} {away}\n\n🔥 بازی آپدیت شد!"
+            )
+
+    save_json_file(LIVE_STATE_FILE, new_state)
+
+    if not goal_messages:
+        return {"ok": True, "message": "No new goals."}
+
+    for chat_id in subscribers:
+        for message in goal_messages:
+            send_message(chat_id, message)
+
+    return {
+        "ok": True,
+        "subscribers": len(subscribers),
+        "goals_detected": len(goal_messages),
     }
 
 

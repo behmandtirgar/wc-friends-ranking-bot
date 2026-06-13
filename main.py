@@ -161,6 +161,9 @@ def display_team(name: str) -> str:
 GAMES_PAGE_SIZE = 10
 CACHE_TTL_SECONDS = 30
 
+PLAYERS_PAGE_SIZE = 9
+PLAYER_GAMES_PAGE_SIZE = 10
+
 SUBSCRIBERS_FILE = "subscribers.json"
 STATE_FILE = "notify_state.json"
 
@@ -271,6 +274,19 @@ def handle_callback(callback: Dict[str, Any]) -> None:
         send_games_page(chat_id, 0)
         return
 
+
+    if data.startswith("players:"):
+        page = safe_int(data.split(":", 1)[1], 0)
+        send_players_page(chat_id, page)
+        return
+
+    if data.startswith("playerpred:"):
+        parts = data.split(":")
+        player_index = safe_int(parts[1], 0)
+        page = safe_int(parts[2], 0)
+        send_player_predictions(chat_id, player_index, page)
+        return
+    
     if data.startswith("games:"):
         page = safe_int(data.split(":", 1)[1], 0)
         send_games_page(chat_id, page)
@@ -292,6 +308,7 @@ def send_main_menu(chat_id: int) -> None:
             "inline_keyboard": [
                 [{"text": "🏆 رنکینگ", "callback_data": "ranking"}],
                 [{"text": "📅 لیست بازی‌ها", "callback_data": "games"}],
+                [{"text": "👥 افراد", "callback_data": "players:0"}],
             ]
         },
     )
@@ -422,6 +439,156 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
     text += "\n\n😄 نکته: بات ترکیب فارسی و عدد را برعکس نشان می‌دهد؛ نتیجه را برای تیم‌ها برعکس بخوانید."
 
     send_long_message(chat_id, text)
+
+
+
+
+def get_players() -> List[Dict[str, Any]]:
+    rows = get_sheet_rows()
+    if len(rows) < 2:
+        return []
+
+    header1 = rows[0]
+    header2 = rows[1]
+
+    players = []
+    for index, points_col in enumerate(POINTS_COLS):
+        name = get_player_name(header1, header2, points_col, index)
+        players.append({
+            "index": index,
+            "name": name,
+            "points_col": points_col,
+        })
+
+    return players
+
+
+def send_players_page(chat_id: int, page: int) -> None:
+    players = get_players()
+
+    if not players:
+        send_message(chat_id, "لیست افراد پیدا نشد.")
+        return
+
+    total_pages = (len(players) + PLAYERS_PAGE_SIZE - 1) // PLAYERS_PAGE_SIZE
+    safe_page = max(0, min(page, total_pages - 1))
+
+    start = safe_page * PLAYERS_PAGE_SIZE
+    page_players = players[start:start + PLAYERS_PAGE_SIZE]
+
+    keyboard = [
+        [{"text": f"👤 {p['name']}", "callback_data": f"playerpred:{p['index']}:0"}]
+        for p in page_players
+    ]
+
+    nav = []
+    if safe_page > 0:
+        nav.append({"text": "⬅️ قبلی", "callback_data": f"players:{safe_page - 1}"})
+    if safe_page < total_pages - 1:
+        nav.append({"text": "بعدی ➡️", "callback_data": f"players:{safe_page + 1}"})
+    if nav:
+        keyboard.append(nav)
+
+    keyboard.append([{"text": "🔙 برگشت به منو", "callback_data": "menu"}])
+
+    send_message(
+        chat_id,
+        f"👥 افراد — صفحه {safe_page + 1} از {total_pages}",
+        reply_markup={"inline_keyboard": keyboard},
+    )
+
+
+def point_icon(points: str) -> str:
+    if points == "":
+        return "⚪️"
+
+    value = safe_int(points, -1)
+
+    if value == 5:
+        return "🔥"
+    if value == 2:
+        return "🟢"
+    if value == 0:
+        return "🔴"
+
+    return "⚪️"
+
+
+def send_player_predictions(chat_id: int, player_index: int, page: int) -> None:
+    rows = get_sheet_rows()
+
+    if len(rows) < 2 or player_index < 0 or player_index >= len(POINTS_COLS):
+        send_message(chat_id, "این بازیکن معتبر نیست.")
+        return
+
+    header1 = rows[0]
+    header2 = rows[1]
+
+    points_col = POINTS_COLS[player_index]
+    player = get_player_name(header1, header2, points_col, player_index)
+
+    games = []
+
+    for row_number, row in enumerate(rows[FIRST_MATCH_ROW - 1:], start=FIRST_MATCH_ROW):
+        team1 = cell(row, TEAM1_NAME_COL)
+        team2 = cell(row, TEAM2_NAME_COL)
+
+        if not team1 or not team2:
+            continue
+
+        pred_team2 = cell(row, points_col - 2)
+        pred_team1 = cell(row, points_col - 1)
+        points = cell(row, points_col)
+
+        icon = point_icon(points)
+
+        if pred_team1 == "" and pred_team2 == "":
+            prediction = "—"
+        else:
+            prediction = f"{pred_team1}-{pred_team2}"
+
+        games.append({
+            "team1": display_team(team1),
+            "team2": display_team(team2),
+            "prediction": prediction,
+            "points": points,
+            "icon": icon,
+        })
+
+    total_pages = (len(games) + PLAYER_GAMES_PAGE_SIZE - 1) // PLAYER_GAMES_PAGE_SIZE
+    safe_page = max(0, min(page, total_pages - 1))
+
+    start = safe_page * PLAYER_GAMES_PAGE_SIZE
+    page_games = games[start:start + PLAYER_GAMES_PAGE_SIZE]
+
+    text = f"👤 پیش‌بینی‌های {player}\n"
+    text += f"صفحه {safe_page + 1} از {total_pages}\n\n"
+
+    for i, game in enumerate(page_games, start=start + 1):
+        points_text = game["points"] if game["points"] != "" else "-"
+        text += (
+            f"{i}. {game['team1']} - {game['team2']}\n"
+            f"پیش‌بینی: {game['prediction']} | امتیاز: {points_text} {game['icon']}\n\n"
+        )
+
+    keyboard = []
+
+    nav = []
+    if safe_page > 0:
+        nav.append({"text": "⬅️ قبلی", "callback_data": f"playerpred:{player_index}:{safe_page - 1}"})
+    if safe_page < total_pages - 1:
+        nav.append({"text": "بعدی ➡️", "callback_data": f"playerpred:{player_index}:{safe_page + 1}"})
+    if nav:
+        keyboard.append(nav)
+
+    keyboard.append([{"text": "👥 برگشت به افراد", "callback_data": "players:0"}])
+    keyboard.append([{"text": "🔙 برگشت به منو", "callback_data": "menu"}])
+
+    send_message(
+        chat_id,
+        text,
+        reply_markup={"inline_keyboard": keyboard},
+    )
 
 
 def get_games() -> List[Dict[str, Any]]:

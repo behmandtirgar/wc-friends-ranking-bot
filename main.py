@@ -3,6 +3,7 @@ import io
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
+import json
 
 import requests
 from flask import Flask, request
@@ -141,6 +142,9 @@ def display_team(name: str) -> str:
 GAMES_PAGE_SIZE = 10
 CACHE_TTL_SECONDS = 30
 
+SUBSCRIBERS_FILE = "subscribers.json"
+STATE_FILE = "notify_state.json"
+
 _cache: Dict[str, Any] = {
     "time": 0,
     "rows": [],
@@ -208,6 +212,7 @@ def handle_message(message: Dict[str, Any]) -> None:
     lower = text.lower()
 
     if text in ["/start", "/menu", "منو"]:
+        save_subscriber(chat_id)
         send_main_menu(chat_id)
         return
 
@@ -403,10 +408,10 @@ def get_games() -> List[Dict[str, Any]]:
     return games
 
 
-def get_sheet_rows() -> List[List[str]]:
+def get_sheet_rows(force_refresh: bool = False) -> List[List[str]]:
     now = time.time()
 
-    if _cache["rows"] and now - _cache["time"] < CACHE_TTL_SECONDS:
+    if not force_refresh and _cache["rows"] and now - _cache["time"] < CACHE_TTL_SECONDS:
         return _cache["rows"]
 
     if not CSV_URL:
@@ -448,6 +453,147 @@ def get_player_name(header1: List[str], header2: List[str], points_col: int, ind
         return v
 
     return f"Player {index + 1}"
+
+
+
+@app.get(f"/notify-results/{WEBHOOK_SECRET}")
+def notify_results():
+    rows = get_sheet_rows(force_refresh=True)
+    subscribers = load_subscribers()
+
+    if not subscribers:
+        return {"ok": False, "message": "No subscribers yet. Users must send /start once."}
+
+    current_state = build_current_state(rows)
+    old_state = load_json_file(STATE_FILE, default={})
+
+    messages = []
+
+    old_results = old_state.get("results", {})
+    new_results = []
+
+    for row_key, result in current_state["results"].items():
+        old_result = old_results.get(row_key)
+
+        if old_result != result:
+            new_results.append(result)
+
+    if new_results:
+        text = "🚨 نتایج جدید ثبت شد\n\n"
+        for result in new_results:
+            text += f"⚽ {result['team1']} {result['score1']}-{result['score2']} {result['team2']}\n"
+
+        text += "\n🏆 رنکینگ آپدیت شد. /ranking"
+        messages.append(text)
+
+    old_top = old_state.get("top", {})
+    new_top = current_state.get("top", {})
+
+    if old_top and new_top and old_top != new_top:
+        names = "، ".join(new_top.get("players", []))
+        points = new_top.get("points", "")
+
+        text = f"🏆 صدر جدول عوض شد!\n\n🥇 نفر اول جدید:\n{names}\nامتیاز: {points}"
+        messages.append(text)
+
+    save_json_file(STATE_FILE, current_state)
+
+    if not messages:
+        return {"ok": True, "message": "No new results or leader changes."}
+
+    sent = 0
+    for chat_id in subscribers:
+        for message in messages:
+            send_message(chat_id, message)
+        sent += 1
+
+    return {
+        "ok": True,
+        "subscribers": len(subscribers),
+        "messages_sent_per_user": len(messages),
+        "new_results": len(new_results),
+        "leader_changed": bool(old_top and new_top and old_top != new_top),
+    }
+
+
+def build_current_state(rows: List[List[str]]) -> Dict[str, Any]:
+    results = {}
+
+    for row_number, row in enumerate(rows[FIRST_MATCH_ROW - 1:], start=FIRST_MATCH_ROW):
+        team1 = cell(row, TEAM1_NAME_COL)
+        team2 = cell(row, TEAM2_NAME_COL)
+
+        score1 = cell(row, TEAM1_GOALS_COL)
+        score2 = cell(row, TEAM2_GOALS_COL)
+
+        if not team1 or not team2:
+            continue
+
+        if score1 == "" or score2 == "":
+            continue
+
+        results[str(row_number)] = {
+            "row": row_number,
+            "team1": team1,
+            "team2": team2,
+            "score1": score1,
+            "score2": score2,
+        }
+
+    top_players = []
+    top_points = ""
+
+    for row in rows:
+        player = cell(row, RANKING_PLAYER_COL)
+        total = cell(row, RANKING_TOTAL_COL)
+        rank = cell(row, RANKING_RANK_COL)
+
+        if not player or not total or not rank:
+            continue
+
+        combined = f"{player} {total} {rank}".lower()
+        if "player name" in combined or "total points" in combined or "rank" in combined:
+            continue
+
+        if str(rank).strip() == "1":
+            top_players.append(player)
+            top_points = total
+
+    return {
+        "results": results,
+        "top": {
+            "players": top_players,
+            "points": top_points,
+        },
+    }
+
+
+def save_subscriber(chat_id: int) -> None:
+    subscribers = load_subscribers()
+
+    if chat_id not in subscribers:
+        subscribers.append(chat_id)
+        save_json_file(SUBSCRIBERS_FILE, subscribers)
+
+
+def load_subscribers() -> List[int]:
+    return load_json_file(SUBSCRIBERS_FILE, default=[])
+
+
+def load_json_file(path: str, default: Any) -> Any:
+    try:
+        if not os.path.exists(path):
+            return default
+
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except Exception:
+        return default
+
+
+def save_json_file(path: str, data: Any) -> None:
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
 
 
 def cell(row: List[str], one_based_col: int) -> str:

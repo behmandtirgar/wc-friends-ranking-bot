@@ -349,10 +349,10 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
     real_team1_goals = cell(row, TEAM1_GOALS_COL)
     real_team2_goals = cell(row, TEAM2_GOALS_COL)
 
-    text = f"⚽ {team1_display} vs {team2_display}\n"
+    text = f"⚽ {team1} - {team2}\n"
 
     if real_team1_goals != "" and real_team2_goals != "":
-        text += f"Final: {team1_display} {real_team1_goals}-{real_team2_goals} {team2_display}\n"
+        text += f"نتیجه واقعی: {team1} {real_team1_goals}-{real_team2_goals} {team2}\n"
     else:
         text += "نتیجه واقعی: هنوز وارد نشده\n"
 
@@ -369,7 +369,7 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
             text += f"{player}: —\n"
             continue
 
-        line = f"{player}: {team1_display} {pred_team1}-{pred_team2} {team2_display}"
+        line = f"{player}: {team1} {pred_team1}-{pred_team2} {team2}"
         if points != "":
             line += f" | {points} امتیاز"
 

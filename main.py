@@ -8,6 +8,10 @@ import json
 import requests
 from flask import Flask, request
 
+try:
+    from upstash_redis import Redis
+except Exception:
+    Redis = None
 
 app = Flask(__name__)
 
@@ -16,6 +20,17 @@ CSV_URL = os.getenv("CSV_URL", "").strip()
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "wc-secret").strip()
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").strip()
+UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
+
+redis_client = None
+
+if Redis and UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
+    redis_client = Redis(
+        url=UPSTASH_REDIS_REST_URL,
+        token=UPSTASH_REDIS_REST_TOKEN,
+    )
 
 LIVE_API_URL = "https://worldcup26.ir/get/games"
 LIVE_STATE_FILE = "live_scores_state.json"
@@ -148,6 +163,12 @@ CACHE_TTL_SECONDS = 30
 
 SUBSCRIBERS_FILE = "subscribers.json"
 STATE_FILE = "notify_state.json"
+
+REDIS_KEY_MAP = {
+    SUBSCRIBERS_FILE: "wc:subscribers",
+    STATE_FILE: "wc:notify_state",
+    LIVE_STATE_FILE: "wc:live_scores_state",
+}
 
 _cache: Dict[str, Any] = {
     "time": 0,
@@ -665,7 +686,26 @@ def load_subscribers() -> List[int]:
     return load_json_file(SUBSCRIBERS_FILE, default=[])
 
 
+
+def redis_key(path: str) -> str:
+    return REDIS_KEY_MAP.get(path, f"wc:{path}")
+
+
 def load_json_file(path: str, default: Any) -> Any:
+    if redis_client:
+        try:
+            value = redis_client.get(redis_key(path))
+
+            if value is None:
+                return default
+
+            if isinstance(value, (dict, list)):
+                return value
+
+            return json.loads(value)
+        except Exception as e:
+            print(f"Redis load error for {path}: {e}")
+
     try:
         if not os.path.exists(path):
             return default
@@ -677,8 +717,19 @@ def load_json_file(path: str, default: Any) -> Any:
 
 
 def save_json_file(path: str, data: Any) -> None:
+    if redis_client:
+        try:
+            redis_client.set(
+                redis_key(path),
+                json.dumps(data, ensure_ascii=False),
+            )
+            return
+        except Exception as e:
+            print(f"Redis save error for {path}: {e}")
+
     with open(path, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+
 
 
 def cell(row: List[str], one_based_col: int) -> str:

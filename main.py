@@ -29,6 +29,115 @@ RANKING_RANK_COL = 63    # BK
 
 POINTS_COLS = [8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47, 50, 53, 56, 59]
 
+TEAM_ENGLISH = {
+    "مکزیک": "Mexico",
+    "آفریقای جنوبی": "South Africa",
+    "کره جنوبی": "South Korea",
+    "جمهوری چک": "Czechia",
+    "کانادا": "Canada",
+    "بوسنی هرزگوین": "Bosnia and Herzegovina",
+    "آمریکا": "United States",
+    "پاراگوئه": "Paraguay",
+    "قطر": "Qatar",
+    "سوئیس": "Switzerland",
+    "برزیل": "Brazil",
+    "مراکش": "Morocco",
+    "هائیتی": "Haiti",
+    "اسکاتلند": "Scotland",
+    "استرالیا": "Australia",
+    "ترکیه": "Turkey",
+    "آلمان": "Germany",
+    "کوراکائو": "Curacao",
+    "هلند": "Netherlands",
+    "ژاپن": "Japan",
+    "ساحل عاج": "Ivory Coast",
+    "اکوادور": "Ecuador",
+    "سوئد": "Sweden",
+    "تونس": "Tunisia",
+    "اسپانیا": "Spain",
+    "کپ ورد": "Cape Verde",
+    "بلژیک": "Belgium",
+    "مصر": "Egypt",
+    "عربستان سعودی": "Saudi Arabia",
+    "اروگوئه": "Uruguay",
+    "اورگوئه": "Uruguay",
+    "ایران": "Iran",
+    "نیوزلند": "New Zealand",
+    "فرانسه": "France",
+    "سنگال": "Senegal",
+    "عراق": "Iraq",
+    "نروژ": "Norway",
+    "آرژانتین": "Argentina",
+    "الجزایر": "Algeria",
+    "اتریش": "Austria",
+    "اردن": "Jordan",
+    "پرتغال": "Portugal",
+    "کنگو": "DR Congo",
+    "انگلستان": "England",
+    "کرواسی": "Croatia",
+    "غنا": "Ghana",
+    "پاناما": "Panama",
+    "ازبکستان": "Uzbekistan",
+    "کلمبیا": "Colombia",
+}
+
+FLAGS = {
+    "Mexico": "🇲🇽",
+    "South Africa": "🇿🇦",
+    "South Korea": "🇰🇷",
+    "Czechia": "🇨🇿",
+    "Canada": "🇨🇦",
+    "Bosnia and Herzegovina": "🇧🇦",
+    "United States": "🇺🇸",
+    "Paraguay": "🇵🇾",
+    "Qatar": "🇶🇦",
+    "Switzerland": "🇨🇭",
+    "Brazil": "🇧🇷",
+    "Morocco": "🇲🇦",
+    "Haiti": "🇭🇹",
+    "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+    "Australia": "🇦🇺",
+    "Turkey": "🇹🇷",
+    "Germany": "🇩🇪",
+    "Curacao": "🇨🇼",
+    "Netherlands": "🇳🇱",
+    "Japan": "🇯🇵",
+    "Ivory Coast": "🇨🇮",
+    "Ecuador": "🇪🇨",
+    "Sweden": "🇸🇪",
+    "Tunisia": "🇹🇳",
+    "Spain": "🇪🇸",
+    "Cape Verde": "🇨🇻",
+    "Belgium": "🇧🇪",
+    "Egypt": "🇪🇬",
+    "Saudi Arabia": "🇸🇦",
+    "Uruguay": "🇺🇾",
+    "Iran": "🇮🇷",
+    "New Zealand": "🇳🇿",
+    "France": "🇫🇷",
+    "Senegal": "🇸🇳",
+    "Iraq": "🇮🇶",
+    "Norway": "🇳🇴",
+    "Argentina": "🇦🇷",
+    "Algeria": "🇩🇿",
+    "Austria": "🇦🇹",
+    "Jordan": "🇯🇴",
+    "Portugal": "🇵🇹",
+    "DR Congo": "🇨🇩",
+    "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "Croatia": "🇭🇷",
+    "Ghana": "🇬🇭",
+    "Panama": "🇵🇦",
+    "Uzbekistan": "🇺🇿",
+    "Colombia": "🇨🇴",
+}
+
+
+def display_team(name: str) -> str:
+    english = TEAM_ENGLISH.get(name, name)
+    flag = FLAGS.get(english, "⚽")
+    return f"{flag} {english}"
+    
 GAMES_PAGE_SIZE = 8
 CACHE_TTL_SECONDS = 30
 
@@ -229,6 +338,9 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
 
     team1 = cell(row, TEAM1_NAME_COL)
     team2 = cell(row, TEAM2_NAME_COL)
+    
+    team1_display = display_team(team1)
+    team2_display = display_team(team2)
 
     if not team1 or not team2:
         send_message(chat_id, "این ردیف بازی معتبر نیست.")
@@ -237,10 +349,10 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
     real_team1_goals = cell(row, TEAM1_GOALS_COL)
     real_team2_goals = cell(row, TEAM2_GOALS_COL)
 
-    text = f"⚽ {team1} - {team2}\n"
+    text = f"⚽ {team1_display} vs {team2_display}\n"
 
     if real_team1_goals != "" and real_team2_goals != "":
-        text += f"نتیجه واقعی: {team1}: {real_team1_goals} | {team2}: {real_team2_goals}\n"
+        text += f"Final: {team1_display} {real_team1_goals}-{real_team2_goals} {team2_display}\n"
     else:
         text += "نتیجه واقعی: هنوز وارد نشده\n"
 
@@ -257,7 +369,7 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
             text += f"{player}: —\n"
             continue
 
-        line = f"{player}: {team1}: {pred_team1} | {team2}: {pred_team2}"
+        line = f"{player}: {team1_display} {pred_team1}-{pred_team2} {team2_display}"
         if points != "":
             line += f" | {points} امتیاز"
 
@@ -281,8 +393,8 @@ def get_games() -> List[Dict[str, Any]]:
             {
                 "index": len(games) + 1,
                 "row_number": zero_index,
-                "team1": team1,
-                "team2": team2,
+                "team1": display_team(team1),
+                "team2": display_team(team2),
             }
         )
 

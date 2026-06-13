@@ -259,6 +259,10 @@ def handle_callback(callback: Dict[str, Any]) -> None:
 
     answer_callback(query_id)
 
+    if data == "menu":
+        send_main_menu(chat_id)
+        return
+
     if data == "ranking":
         send_ranking(chat_id)
         return
@@ -319,7 +323,15 @@ def send_ranking(chat_id: int) -> None:
     for rank, player, total in ranking_rows[:30]:
         text += f"{rank}. {player} — {total} امتیاز\n"
 
-    send_long_message(chat_id, text)
+    send_message(
+        chat_id,
+        text,
+        reply_markup={
+            "inline_keyboard": [
+                [{"text": "🔙 برگشت به منو", "callback_data": "menu"}]
+            ]
+        },
+    )
 
 
 def send_games_page(chat_id: int, page: int) -> None:
@@ -347,6 +359,8 @@ def send_games_page(chat_id: int, page: int) -> None:
         nav.append({"text": "بعدی ➡️", "callback_data": f"games:{safe_page + 1}"})
     if nav:
         keyboard.append(nav)
+
+    keyboard.append([{"text": "🔙 برگشت به منو", "callback_data": "menu"}])
 
     send_message(
         chat_id,

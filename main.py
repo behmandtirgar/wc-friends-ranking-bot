@@ -301,7 +301,7 @@ def get_sheet_rows() -> List[List[str]]:
     response = requests.get(CSV_URL, timeout=15)
     response.raise_for_status()
 
-    text = response.text
+    text = response.content.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text))
     rows = [[str(value).strip() for value in row] for row in reader]
 

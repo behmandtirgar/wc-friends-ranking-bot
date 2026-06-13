@@ -138,7 +138,7 @@ def display_team(name: str) -> str:
     flag = FLAGS.get(english, "⚽")
     return f"{flag} {english}"
     
-GAMES_PAGE_SIZE = 8
+GAMES_PAGE_SIZE = 10
 CACHE_TTL_SECONDS = 30
 
 _cache: Dict[str, Any] = {
@@ -374,6 +374,8 @@ def send_match_predictions(chat_id: int, row_number: int) -> None:
             line += f" | {points} امتیاز"
 
         text += line + "\n"
+
+    text += "\n\n😄 نکته: بات ترکیب فارسی و عدد را برعکس نشان می‌دهد؛ نتیجه را برای تیم‌ها برعکس بخوانید."
 
     send_long_message(chat_id, text)
 

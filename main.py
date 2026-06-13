@@ -602,8 +602,19 @@ def check_live_goals():
         old_away = safe_int(old.get("away_score"), 0)
 
         if home_score > old_home or away_score > old_away:
+            scoring_team = home if home_score > old_home else away
+            minute = game.get("time_elapsed") or game.get("minute") or game.get("elapsed") or ""
+        
+            if minute:
+                minute_line = f"⏱ {minute}'"
+            else:
+                minute_line = "⏱ Live"
+        
             goal_messages.append(
-                f"⚽ گللللل!\n\n{home} {home_score}-{away_score} {away}\n\n🔥 بازی آپدیت شد!"
+                f"⚽ GOOOOOAL!\n\n"
+                f"{home} {home_score}-{away_score} {away}\n\n"
+                f"{minute_line}\n\n"
+                f"گل برای {scoring_team}"
             )
 
     save_json_file(LIVE_STATE_FILE, new_state)
@@ -619,6 +630,32 @@ def check_live_goals():
         "ok": True,
         "subscribers": len(subscribers),
         "goals_detected": len(goal_messages),
+    }
+
+
+@app.get(f"/test-notification/{WEBHOOK_SECRET}")
+def test_notification():
+    subscribers = load_subscribers()
+
+    if not subscribers:
+        return {"ok": False, "message": "No subscribers yet."}
+
+    message = (
+        "⚽ GOOOOOAL!\n\n"
+        "🇩🇪 Germany 2-1 France 🇫🇷\n\n"
+        "⏱ 67'\n\n"
+        "گل برای Germany"
+    )
+
+    sent = 0
+    for chat_id in subscribers:
+        send_message(chat_id, message)
+        sent += 1
+
+    return {
+        "ok": True,
+        "subscribers": len(subscribers),
+        "messages_sent": sent,
     }
 
 

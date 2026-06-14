@@ -35,6 +35,11 @@ if Redis and UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
 LIVE_API_URL = "https://worldcup26.ir/get/games"
 LIVE_STATE_FILE = "live_scores_state.json"
 
+TODAY_PHOTO_FILE = "today_photo.json"
+
+ADMIN_IDS = {
+    100138480,
+}
 
 FIRST_MATCH_ROW = 3
 
@@ -152,6 +157,42 @@ FLAGS = {
     "Colombia": "🇨🇴",
 }
 
+def save_today_photo(file_id):
+    save_json_file(TODAY_PHOTO_FILE, {"file_id": file_id})
+
+
+def load_today_photo():
+    data = load_json_file(TODAY_PHOTO_FILE, default={})
+
+    if not isinstance(data, dict):
+        return None
+
+    return data.get("file_id")
+
+
+
+def send_today_games(chat_id):
+    file_id = load_today_photo()
+
+    if not file_id:
+        send_message(chat_id, "فعلاً عکسی برای بازی‌های امروز ثبت نشده 😅")
+        return
+
+    url = f"{TELEGRAM_API}/sendPhoto"
+
+    payload = {
+        "chat_id": chat_id,
+        "photo": file_id,
+        "caption": "📸 بازی‌های امروز"
+    }
+
+    requests.post(url, json=payload, timeout=15)
+
+
+
+
+
+
 
 def display_team(name: str) -> str:
     english = TEAM_ENGLISH.get(name, name)
@@ -171,6 +212,7 @@ REDIS_KEY_MAP = {
     SUBSCRIBERS_FILE: "wc:subscribers",
     STATE_FILE: "wc:notify_state",
     LIVE_STATE_FILE: "wc:live_scores_state",
+    TODAY_PHOTO_FILE: "wc:today_photo",
 }
 
 _cache: Dict[str, Any] = {
@@ -236,6 +278,24 @@ def webhook_info():
 
 def handle_message(message: Dict[str, Any]) -> None:
     chat_id = message["chat"]["id"]
+    user_id = message.get("from", {}).get("id")
+
+    caption = str(message.get("caption", "")).strip()
+
+    # آپلود عکس روزانه توسط ادمین
+    if "photo" in message and caption == "/set_today_photo":
+        if user_id not in ADMIN_IDS:
+            send_message(chat_id, "فقط ادمین می‌تونه عکس بازی‌های امروز رو تغییر بده 😒")
+            return
+
+        best_photo = message["photo"][-1]
+        file_id = best_photo["file_id"]
+
+        save_today_photo(file_id)
+
+        send_message(chat_id, "✅ عکس بازی‌های امروز آپدیت شد.")
+        return
+
     text = str(message.get("text", "")).strip()
     lower = text.lower()
 
@@ -246,6 +306,10 @@ def handle_message(message: Dict[str, Any]) -> None:
 
     if "رنکینگ" in text or "ranking" in lower or "rank" in lower:
         send_ranking(chat_id)
+        return
+
+    if "بازی‌های امروز" in text or "بازیهای امروز" in text or "today" in lower:
+        send_today_games(chat_id)
         return
 
     if "بازی" in text or "لیست" in text or "games" in lower or "matches" in lower:
@@ -270,6 +334,10 @@ def handle_callback(callback: Dict[str, Any]) -> None:
         send_ranking(chat_id)
         return
 
+    if data == "today_games":
+        send_today_games(chat_id)
+        return
+        
     if data == "games":
         send_games_page(chat_id, 0)
         return
@@ -303,12 +371,13 @@ def handle_callback(callback: Dict[str, Any]) -> None:
 def send_main_menu(chat_id: int) -> None:
     send_message(
         chat_id,
-        "چی رو می‌خوای ببینی؟ 😄",
+        "چی رو می‌خوای ببینی؟ 🤔",
         reply_markup={
             "inline_keyboard": [
                 [{"text": "🏆 رنکینگ", "callback_data": "ranking"}],
                 [{"text": "📅 لیست بازی‌ها", "callback_data": "games"}],
                 [{"text": "👥 افراد", "callback_data": "players:0"}],
+                [{"text": "📸 بازی‌های امروز", "callback_data": "today_games"}],
             ]
         },
     )
